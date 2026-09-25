@@ -1,0 +1,643 @@
+// ════════════════════════════════════════════════════════════════
+//  Sr.Robs Dashboard  ·  © Sr.Robs — Direitos Reservados
+//  All Rights Reserved — Não utilizar sem autorização expressa.
+//  Pane separado — sempre visível, nunca atrás das velas.
+// ════════════════════════════════════════════════════════════════
+//@version=6
+indicator("Sr.Robs Dashboard [Direitos Reservados]", shorttitle="Sr.Robs DB", overlay=false, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+
+// ── GRUPOS DE INPUT ─────────────────────────────────────────────
+GRP_PRESET = "⏱️ Presets de Timeframe (Sr.Robs)"
+GRP_CORE   = "⚙️ Core Settings"
+GRP_TREND  = "📈 Trend Leg"
+GRP_MOM    = "🌊 Momentum Leg"
+GRP_VOL    = "📦 Volume Leg"
+GRP_STR    = "🏗️ Structure Leg"
+GRP_FILT   = "🕯️ Filters"
+GRP_TRD    = "📐 Trade Tools"
+GRP_COL    = "🌈 Colors"
+
+// ── SELETOR DE PRESET (botões virtuais) ─────────────────────────
+// Como o Pine Script não suporta botões clicáveis no gráfico,
+// este seletor ajusta TODOS os parâmetros de uma só vez.
+i_preset = input.string("5m", "🎯 Preset de Timeframe", options=["Manual", "1m", "3m", "5m", "15m", "30m", "1d"], group=GRP_PRESET, tooltip="Ajusta TUDO automaticamente: scores, gaps, TPs, volume, pivot, SL, EMAs, RSI, MACD.\nCada TF tem parâmetros otimizados para máxima precisão.\n'Manual' usa os valores definidos manualmente.")
+
+// ── FUNÇÕES DE PRESET ───────────────────────────────────────────
+// Parâmetros `simple` obrigatórios: o resultado tem de ser `simple int`
+// para ser compatível com ta.ema, ta.rsi, ta.atr, f_ema, f_pivotHigh.
+// Cada timeframe tem parâmetros otimizados para o seu contexto.
+f_p_emaFast(simple string p)  => p == "1m" ? 9  : p == "3m" ? 13 : p == "5m" ? 21 : p == "15m" ? 21 : p == "30m" ? 34 : p == "1d" ? 8  : 21
+f_p_emaSlow(simple string p)  => p == "1m" ? 21 : p == "3m" ? 34 : p == "5m" ? 50 : p == "15m" ? 50 : p == "30m" ? 89 : p == "1d" ? 21 : 50
+f_p_emaMacro(simple string p) => p == "1m" ? 100 : p == "3m" ? 150 : p == "5m" ? 200 : p == "15m" ? 200 : p == "30m" ? 200 : p == "1d" ? 50 : 200
+f_p_slope(simple string p)    => p == "1m" ? 3  : p == "3m" ? 4  : p == "5m" ? 5  : p == "15m" ? 5  : p == "30m" ? 6  : p == "1d" ? 3  : 5
+f_p_rsi(simple string p)      => p == "1m" ? 9  : p == "3m" ? 11 : p == "5m" ? 14 : p == "15m" ? 14 : p == "30m" ? 14 : p == "1d" ? 14 : 14
+f_p_macdF(simple string p)    => p == "1m" ? 5  : p == "3m" ? 8  : p == "5m" ? 12 : p == "15m" ? 12 : p == "30m" ? 12 : p == "1d" ? 12 : 12
+f_p_macdS(simple string p)    => p == "1m" ? 13 : p == "3m" ? 17 : p == "5m" ? 26 : p == "15m" ? 26 : p == "30m" ? 26 : p == "1d" ? 26 : 26
+f_p_macdSig(simple string p)  => p == "1m" ? 5  : p == "3m" ? 9  : p == "5m" ? 9  : p == "15m" ? 9  : p == "30m" ? 9  : p == "1d" ? 9  : 9
+f_p_volMa(simple string p)    => p == "1m" ? 14 : p == "3m" ? 18 : p == "5m" ? 20 : p == "15m" ? 20 : p == "30m" ? 20 : p == "1d" ? 20 : 20
+f_p_pivot(simple string p)    => p == "1m" ? 5  : p == "3m" ? 6  : p == "5m" ? 7  : p == "15m" ? 9  : p == "30m" ? 10 : p == "1d" ? 3  : 7
+f_p_atr(simple string p)      => p == "1m" ? 7  : p == "3m" ? 10 : p == "5m" ? 14 : p == "15m" ? 14 : p == "30m" ? 14 : p == "1d" ? 14 : 14
+f_p_slMult(simple string p)   => p == "1m" ? 1.5 : p == "3m" ? 1.6 : p == "5m" ? 1.8 : p == "15m" ? 2.0 : p == "30m" ? 2.5 : p == "1d" ? 2.0 : 1.8
+f_p_gap(simple string p)      => p == "1m" ? 8  : p == "3m" ? 12 : p == "5m" ? 20 : p == "15m" ? 30 : p == "30m" ? 40 : p == "1d" ? 60 : 20
+
+// Score & signal quality presets — stricter = fewer but better signals
+f_p_mediumScore(simple string p) => p == "1m" ? 50 : p == "3m" ? 50 : p == "5m" ? 50 : p == "15m" ? 50 : p == "30m" ? 50 : p == "1d" ? 50 : 50
+f_p_strongScore(simple string p) => p == "1m" ? 75 : p == "3m" ? 75 : p == "5m" ? 75 : p == "15m" ? 75 : p == "30m" ? 75 : p == "1d" ? 75 : 75
+f_p_scoreGap(simple string p)    => p == "1m" ? 15 : p == "3m" ? 15 : p == "5m" ? 15 : p == "15m" ? 12 : p == "30m" ? 12 : p == "1d" ? 10 : 15
+f_p_volSpike(simple string p)    => p == "1m" ? 1.8 : p == "3m" ? 1.8 : p == "5m" ? 1.8 : p == "15m" ? 1.5 : p == "30m" ? 1.5 : p == "1d" ? 1.5 : 1.8
+// TP presets — shorter R:R for lower TFs (faster moves), longer for higher TFs
+f_p_tp1(simple string p)         => p == "1m" ? 0.8 : p == "3m" ? 0.8 : p == "5m" ? 1.0 : p == "15m" ? 1.0 : p == "30m" ? 1.0 : p == "1d" ? 1.0 : 1.0
+f_p_tp2(simple string p)         => p == "1m" ? 1.5 : p == "3m" ? 1.5 : p == "5m" ? 2.0 : p == "15m" ? 2.0 : p == "30m" ? 2.5 : p == "1d" ? 2.0 : 2.0
+f_p_tp3(simple string p)         => p == "1m" ? 2.0 : p == "3m" ? 2.0 : p == "5m" ? 3.0 : p == "15m" ? 3.0 : p == "30m" ? 4.0 : p == "1d" ? 3.0 : 3.0
+
+simple bool usePreset = i_preset != "Manual"
+
+// Aplica preset OU valor manual
+i_emaFastLen  = usePreset ? f_p_emaFast(i_preset)  : input.int(21,  "EMA Fast",   minval=1, group=GRP_TREND)
+i_emaSlowLen  = usePreset ? f_p_emaSlow(i_preset)  : input.int(50,  "EMA Slow",   minval=1, group=GRP_TREND)
+i_emaTrendLen = usePreset ? f_p_emaMacro(i_preset) : input.int(200, "EMA Macro",  minval=1, group=GRP_TREND)
+i_slopeLen    = usePreset ? f_p_slope(i_preset)    : input.int(5,   "Slope Lookback", minval=1, group=GRP_TREND)
+
+i_rsiLen      = usePreset ? f_p_rsi(i_preset)      : input.int(14,  "RSI Length", minval=1, group=GRP_MOM)
+i_rsiMid      = input.int(50, "RSI Midline", minval=1, maxval=99, group=GRP_MOM)
+i_macdFast    = usePreset ? f_p_macdF(i_preset)    : input.int(12,  "MACD Fast", minval=1, group=GRP_MOM)
+i_macdSlow    = usePreset ? f_p_macdS(i_preset)    : input.int(26,  "MACD Slow", minval=1, group=GRP_MOM)
+i_macdSig     = usePreset ? f_p_macdSig(i_preset)  : input.int(9,   "MACD Signal", minval=1, group=GRP_MOM)
+
+i_volMaLen    = usePreset ? f_p_volMa(i_preset)    : input.int(20,  "Volume MA Length", minval=1, group=GRP_VOL)
+i_volSpike    = usePreset ? f_p_volSpike(i_preset) : input.float(1.5, "Volume Spike Mult", minval=1.0, step=0.1, group=GRP_VOL)
+
+i_pivotLen    = usePreset ? f_p_pivot(i_preset)    : input.int(5,   "Pivot Lookback", minval=2, group=GRP_STR)
+
+i_atrLen      = usePreset ? f_p_atr(i_preset)      : input.int(14,  "ATR Length", minval=1, group=GRP_FILT)
+
+// ── CORE SETTINGS ───────────────────────────────────────────────
+i_scoreStrong   = usePreset ? f_p_strongScore(i_preset) : input.int(70, "Strong Threshold", minval=50, maxval=100, group=GRP_CORE)
+i_scoreMedium   = usePreset ? f_p_mediumScore(i_preset) : input.int(45, "Medium Threshold", minval=20, maxval=90, group=GRP_CORE)
+i_minBarsGap    = usePreset ? f_p_gap(i_preset)    : input.int(15, "Min Bars Between Signals", minval=0, group=GRP_CORE)
+i_minScoreGap   = usePreset ? f_p_scoreGap(i_preset) : input.float(10, "Min Score Gap Bull/Bear", minval=0, maxval=50, step=1, group=GRP_CORE)
+
+i_wTrend        = input.float(30, "Trend Weight %", minval=0, maxval=100, step=5, group=GRP_CORE)
+i_wMom          = input.float(25, "Momentum Weight %", minval=0, maxval=100, step=5, group=GRP_CORE)
+i_wVol          = input.float(15, "Volume Weight %", minval=0, maxval=100, step=5, group=GRP_CORE)
+i_wStruct       = input.float(30, "Structure Weight %", minval=0, maxval=100, step=5, group=GRP_CORE)
+
+// ── FILTROS ─────────────────────────────────────────────────────
+i_useHtfFilter  = input.bool(false, "Enable HTF Trend Filter", group=GRP_FILT)
+i_htfRes        = input.timeframe("60", "HTF Timeframe", group=GRP_FILT)
+i_useVolatFilt  = input.bool(true, "Enable Volatility Filter", group=GRP_FILT)
+i_atrMinPct     = input.float(0.05, "Min ATR % of Price", minval=0.0, step=0.01, group=GRP_FILT)
+i_lateBars      = input.int(2, "⚠️ Late Entry Threshold (Bars)", minval=1, maxval=20, group=GRP_FILT, tooltip="Número de barras consecutivas com condições base ativas para considerar entrada tardia.\nSe o raw signal esteve ativo ≥ N barras antes de disparar, mostra aviso.")
+
+// ── TRADE TOOLS ─────────────────────────────────────────────────
+i_slAtrMult     = usePreset ? f_p_slMult(i_preset) : input.float(1.5, "SL ATR Multiplier", minval=0.1, step=0.1, group=GRP_TRD)
+i_tp1RR         = usePreset ? f_p_tp1(i_preset) : input.float(1.0, "TP1 R:R", minval=0.1, step=0.1, group=GRP_TRD)
+i_tp2RR         = usePreset ? f_p_tp2(i_preset) : input.float(2.0, "TP2 R:R", minval=0.1, step=0.1, group=GRP_TRD)
+i_tp3RR         = usePreset ? f_p_tp3(i_preset) : input.float(3.0, "TP3 R:R", minval=0.1, step=0.1, group=GRP_TRD)
+i_lockSignal    = input.bool(false, "🔒 Lock Signal", group=GRP_TRD, tooltip="Freeze current signal · block new ones")
+i_beTp1         = input.bool(true, "🛡️ BE After TP1", group=GRP_TRD, tooltip="Move SL quando TP1 é atingido")
+i_beMode         = input.string("Entry", "BE Target", options=["Entry", "Half TP1"], group=GRP_TRD, tooltip="Entry = SL vai para o preço de entrada (risco zero) | Half TP1 = SL vai para o meio do TP1 (dá mais espaço)")
+i_useTrail      = input.bool(true, "🏃 Trailing Stop", group=GRP_TRD)
+i_trailAct      = input.string("After TP2", "Start Trailing", options=["Immediate", "After TP1", "After TP2"], group=GRP_TRD, tooltip="Quando começar o trailing stop")
+i_trailAtr      = input.float(1.5, "Trailing ATR Mult", minval=0.1, step=0.1, group=GRP_TRD, tooltip="Distância ATR para o trailing stop")
+i_nextTrade     = input.bool(false, "🔄 Próx Trade (Reset Gap)", group=GRP_TRD, tooltip="Ativa para reduzir a espera e começar a contar para o próximo sinal. | Mantém ativo durante a contagem. Desativa depois do próximo sinal.")
+i_resetGap      = input.int(3, "⚡ Reset Gap (Barras)", minval=1, maxval=100, group=GRP_TRD, tooltip="Número de barras a esperar após ativar o Próx Trade. | Ex: com Min Gap=15 e Reset Gap=3, só esperas 3 barras em vez de 15.")
+
+// ── 💰 RISK MANAGEMENT (Auto-Detect Pip + Position Size) ──────
+// Deteta automaticamente o pip size via syminfo.mintick
+// Deteta automaticamente o pip value via lookup do par syminfo.basecurrency/syminfo.currency
+// Tu só metes a banca e a % de risco → o lote é calculado automaticamente!
+i_balance       = input.float(1000, "💵 Account Balance ($)", minval=1, step=100, group=GRP_TRD, tooltip="Saldo da tua conta. O lote é calculado para arriscar apenas i_riskPct% deste valor.")
+i_riskPct       = input.float(1.0, "📐 Risk per Trade (%)", minval=0.1, maxval=100, step=0.1, group=GRP_TRD, tooltip="% da banca que queres arriscar por trade.\nEx: 1% de $1000 = $10 de risco.")
+i_minLot        = input.float(0.01, "🔻 Min Lot Size", minval=0.01, step=0.01, group=GRP_TRD, tooltip="Lote mínimo permitido.")
+i_maxLot        = input.float(50.0, "🔺 Max Lot Size", minval=0.01, step=0.1, group=GRP_TRD, tooltip="Lote máximo permitido. Se o cálculo der > maxLot, usa o maxLot.")
+i_lotStep       = input.float(0.01, "↕️ Lot Step", minval=0.01, step=0.01, group=GRP_TRD, tooltip="Incremento do lote (ex: 0.01 para micro lotes).")
+i_showRisk      = input.bool(true, "📊 Show Risk Info in Dashboard", group=GRP_TRD, tooltip="Mostra pip size, pip value, lote recomendado e P&L no dashboard.")
+
+// ── DASHBOARD ───────────────────────────────────────────────────
+i_showDash      = input.bool(true, "Show Dashboard", group=GRP_TRD)
+i_dashPos       = input.string("Bottom Left", "Dashboard Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=GRP_TRD)
+
+// ── COLORS ──────────────────────────────────────────────────────
+c_bull          = input.color(color.new(#26a69a, 0), "Bull Color", group=GRP_COL)
+c_bear          = input.color(color.new(#ef5350, 0), "Bear Color", group=GRP_COL)
+c_neutral       = input.color(color.new(#787b86, 0), "Neutral Color", group=GRP_COL)
+c_emaFast       = input.color(color.new(#2196f3, 0), "EMA Fast Color", group=GRP_COL)
+c_emaSlow       = input.color(color.new(#ff9800, 0), "EMA Slow Color", group=GRP_COL)
+c_emaMacroCol   = input.color(color.new(#9c27b0, 0), "EMA Macro Color", group=GRP_COL)
+c_sl            = input.color(#ef5350, "SL Color", group=GRP_COL)
+c_entry         = input.color(#2196f3, "Entry Color", group=GRP_COL)
+c_tp            = input.color(#26a69a, "TP Color", group=GRP_COL)
+c_lblTxt        = input.color(color.white, "Label Text Color", group=GRP_COL)
+c_hold          = input.color(color.new(#26a69a, 0), "Sinal Ativo (Manter)", group=GRP_COL)
+c_exit          = input.color(color.new(#ef5350, 0), "Sinal Invalidado (Sair)", group=GRP_COL)
+c_wait          = input.color(color.new(#787b86, 0), "Aguarda Sinal", group=GRP_COL)
+C_DASH_HDR      = input.color(color.new(#1a1040, 0), "Dashboard Header", group=GRP_COL, tooltip="Cor sólida do cabeçalho — 100% opaco")
+C_DASH_BG       = input.color(color.new(#0c111f, 0), "Dashboard Background", group=GRP_COL, tooltip="Fundo escuro 100% opaco — sempre visível")
+C_DASH_TXT      = input.color(color.new(#ffffff, 0), "Dashboard Text", group=GRP_COL)
+
+// ════════════════════════════════════════════════════════════════
+// ── CORE LOGIC ─────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════
+f_ema(series float src, simple int length) =>
+    float alpha = 2.0 / (length + 1)
+    var float result = na
+    result := na(result[1]) ? src : alpha * src + (1 - alpha) * result[1]
+    result
+
+emaFast = f_ema(close, i_emaFastLen)
+emaSlow = f_ema(close, i_emaSlowLen)
+emaMacro = f_ema(close, i_emaTrendLen)
+emaFastSlope = (emaFast - emaFast[i_slopeLen]) / i_slopeLen
+emaSlowSlope = (emaSlow - emaSlow[i_slopeLen]) / i_slopeLen
+
+trendUpScore = 0.0
+trendUpScore += emaFast > emaSlow ? 40.0 : 0.0
+trendUpScore += close > emaMacro ? 30.0 : 0.0
+trendUpScore += emaFastSlope > 0 ? 20.0 : 0.0
+trendUpScore += emaSlowSlope > 0 ? 10.0 : 0.0
+
+trendDnScore = 0.0
+trendDnScore += emaFast < emaSlow ? 40.0 : 0.0
+trendDnScore += close < emaMacro ? 30.0 : 0.0
+trendDnScore += emaFastSlope < 0 ? 20.0 : 0.0
+trendDnScore += emaSlowSlope < 0 ? 10.0 : 0.0
+
+rsiVal = ta.rsi(close, i_rsiLen)
+[macdLine, macdSig, macdHist] = ta.macd(close, i_macdFast, i_macdSlow, i_macdSig)
+
+momUpScore = 0.0
+momUpScore += rsiVal > i_rsiMid ? 35.0 : 0.0
+momUpScore += macdLine > macdSig ? 35.0 : 0.0
+momUpScore += macdHist > macdHist[1] ? 30.0 : 0.0
+
+momDnScore = 0.0
+momDnScore += rsiVal < i_rsiMid ? 35.0 : 0.0
+momDnScore += macdLine < macdSig ? 35.0 : 0.0
+momDnScore += macdHist < macdHist[1] ? 30.0 : 0.0
+
+volMa = ta.sma(volume, i_volMaLen)
+volRatio = volMa > 0 ? volume / volMa : 1.0
+isVolSpike = volRatio >= i_volSpike
+bullCandle = close > open
+bearCandle = close < open
+
+volUpScore = 0.0
+volUpScore += isVolSpike and bullCandle ? 60.0 : 0.0
+volUpScore += volume > volume[1] and bullCandle ? 40.0 : 0.0
+
+volDnScore = 0.0
+volDnScore += isVolSpike and bearCandle ? 60.0 : 0.0
+volDnScore += volume > volume[1] and bearCandle ? 40.0 : 0.0
+
+f_pivotHigh(series float src, simple int len) =>
+    float candidate = src[len]
+    bool isValid = true
+    for i = 0 to len * 2
+        if i != len and src[i] >= candidate
+            isValid := false
+    isValid ? candidate : na
+f_pivotLow(series float src, simple int len) =>
+    float candidate = src[len]
+    bool isValid = true
+    for i = 0 to len * 2
+        if i != len and src[i] <= candidate
+            isValid := false
+    isValid ? candidate : na
+
+ph = f_pivotHigh(high[1], i_pivotLen)
+pl = f_pivotLow(low[1], i_pivotLen)
+
+var float lastPH = na
+var float lastPH2 = na
+var float lastPL = na
+var float lastPL2 = na
+
+if not na(ph)
+    lastPH2 := lastPH
+    lastPH := ph
+if not na(pl)
+    lastPL2 := lastPL
+    lastPL := pl
+
+structUp = not na(lastPH) and not na(lastPH2) and not na(lastPL) and not na(lastPL2) and lastPH > lastPH2 and lastPL > lastPL2
+structDn = not na(lastPH) and not na(lastPH2) and not na(lastPL) and not na(lastPL2) and lastPH < lastPH2 and lastPL < lastPL2
+
+var int lastBosDir = 0
+bosUp = not na(lastPH) and close[1] > lastPH and lastBosDir <= 0
+bosDn = not na(lastPL) and close[1] < lastPL and lastBosDir >= 0
+if bosUp
+    lastBosDir := 1
+if bosDn
+    lastBosDir := -1
+
+structUpScore = 0.0
+structUpScore += structUp ? 60.0 : 0.0
+structUpScore += bosUp ? 40.0 : 0.0
+
+structDnScore = 0.0
+structDnScore += structDn ? 60.0 : 0.0
+structDnScore += bosDn ? 40.0 : 0.0
+
+wSum = i_wTrend + i_wMom + i_wVol + i_wStruct
+wSumSafe = wSum == 0 ? 1.0 : wSum
+
+bullScore = (trendUpScore * i_wTrend + momUpScore * i_wMom + volUpScore * i_wVol + structUpScore * i_wStruct) / wSumSafe
+bearScore = (trendDnScore * i_wTrend + momDnScore * i_wMom + volDnScore * i_wVol + structDnScore * i_wStruct) / wSumSafe
+
+f_tier(float s) =>
+    string t = s >= i_scoreStrong ? "Strong" : s >= i_scoreMedium ? "Medium" : s > 0 ? "Weak" : "None"
+    t
+
+bullTier = f_tier(bullScore)
+bearTier = f_tier(bearScore)
+
+htfResSafe = timeframe.in_seconds(i_htfRes) >= timeframe.in_seconds(timeframe.period) ? i_htfRes : timeframe.period
+htfEmaRaw = ta.ema(close, i_emaSlowLen)
+[htfClose, htfEma] = request.security(syminfo.tickerid, htfResSafe, [close[1], htfEmaRaw[1]], lookahead=barmerge.lookahead_on)
+htfBullOk = not i_useHtfFilter or (not na(htfClose) and not na(htfEma) and htfClose > htfEma)
+htfBearOk = not i_useHtfFilter or (not na(htfClose) and not na(htfEma) and htfClose < htfEma)
+
+atrVal = ta.atr(i_atrLen)
+atrPct = close > 0 ? atrVal / close * 100 : 0.0
+volatOk = not i_useVolatFilt or atrPct >= i_atrMinPct
+
+var int lastLongBarIdx = na
+var int lastShortBarIdx = na
+var bool prevNextTrade = false
+gapOkLong = na(lastLongBarIdx) or (bar_index - lastLongBarIdx) >= i_minBarsGap
+gapOkShort = na(lastShortBarIdx) or (bar_index - lastShortBarIdx) >= i_minBarsGap
+
+rawLongSignal = bullScore >= i_scoreMedium and (bullScore - bearScore) >= i_minScoreGap and htfBullOk and volatOk and gapOkLong
+rawShortSignal = bearScore >= i_scoreMedium and (bearScore - bullScore) >= i_minScoreGap and htfBearOk and volatOk and gapOkShort
+
+longSignal = rawLongSignal and barstate.isconfirmed
+shortSignal = rawShortSignal and barstate.isconfirmed
+
+if longSignal
+    lastLongBarIdx := bar_index
+if shortSignal
+    lastShortBarIdx := bar_index
+
+// ── Botão virtual "Próx Trade" — reduz a espera para i_resetGap barras ─
+// Em vez de esperar o gap completo (i_minBarsGap), salta para faltar só
+// i_resetGap barras. Ex: Min Gap=15, Reset Gap=3 → só 3 barras de espera.
+if barstate.islast
+    if i_nextTrade and not prevNextTrade
+        int _skip = math.max(0, i_minBarsGap - i_resetGap)
+        lastLongBarIdx := bar_index - _skip
+        lastShortBarIdx := bar_index - _skip
+    prevNextTrade := i_nextTrade
+
+// ════════════════════════════════════════════════════════════════
+// ── RISK MANAGEMENT — Auto-Detect Pip (must be BEFORE signal blocks) ──
+// ════════════════════════════════════════════════════════════════
+
+// ── Lookup table for pip value per standard lot (by pair) ──
+f_pairPipValue(simple string p) =>
+    p == "EUR/USD" ? 10.0 : p == "GBP/USD" ? 10.0 : p == "USD/JPY" ? 9.0 : p == "USD/CAD" ? 7.5 : p == "USD/CHF" ? 11.0 : p == "AUD/USD" ? 10.0 : p == "NZD/USD" ? 10.0 : p == "EUR/GBP" ? 12.5 : p == "GBP/JPY" ? 6.5 : p == "BTC/USD" ? 1.0 : p == "ETH/USD" ? 1.0 : p == "XAU/USD" ? 10.0 : p == "US30" ? 1.0 : p == "NAS100" ? 1.0 : 10.0
+
+// ── 1. Auto-detect pip size from syminfo.mintick ──
+pipSize = syminfo.mintick < 0.0001 ? syminfo.mintick * 10 : syminfo.mintick < 0.001 ? syminfo.mintick * 10 : syminfo.mintick < 0.1 ? syminfo.mintick * 10 : syminfo.mintick
+
+// ── 2. Auto-detect pair name and pip value ──
+string _autoPair = syminfo.basecurrency + "/" + syminfo.currency
+pipValue = f_pairPipValue(_autoPair)
+
+var float entryPrice = na
+var float slPrice = na
+var float tp1Price = na
+var float tp2Price = na
+var float tp3Price = na
+var int lastSignalBar = na
+var int lastDir = 0
+// TP hit state tracking — previne spam de alertas
+var bool tp1HitDone = false
+var bool tp2HitDone = false
+var bool tp3HitDone = false
+// Risk management vars (set on signal bar, persist via var)
+var float _slDist = na
+var float _pipsAtRisk = 0.0
+var float _riskAmount = 0.0
+var float _rawLot = 0.0
+var float _posSize = 0.0
+
+if longSignal
+    entryPrice := close
+    slPrice := close - atrVal * i_slAtrMult
+    riskDist = entryPrice - slPrice
+    tp1Price := entryPrice + riskDist * i_tp1RR
+    tp2Price := entryPrice + riskDist * i_tp2RR
+    tp3Price := entryPrice + riskDist * i_tp3RR
+    lastSignalBar := bar_index
+    lastDir := 1
+    tp1HitDone := false
+    tp2HitDone := false
+    tp3HitDone := false
+    // ── Position Size Calculation ──
+    _slDist := riskDist
+    _pipsAtRisk := pipSize > 0 ? riskDist / pipSize : 0.0
+    _riskAmount := i_balance * i_riskPct / 100.0
+    _rawLot := _pipsAtRisk > 0 and pipValue > 0 ? _riskAmount / (_pipsAtRisk * pipValue) : 0.0
+    _posSize := math.max(i_minLot, math.min(i_maxLot, math.floor(_rawLot / i_lotStep + 0.000001) * i_lotStep))
+
+if shortSignal
+    entryPrice := close
+    slPrice := close + atrVal * i_slAtrMult
+    riskDist = slPrice - entryPrice
+    tp1Price := entryPrice - riskDist * i_tp1RR
+    tp2Price := entryPrice - riskDist * i_tp2RR
+    tp3Price := entryPrice - riskDist * i_tp3RR
+    lastSignalBar := bar_index
+    lastDir := -1
+    tp1HitDone := false
+    tp2HitDone := false
+    tp3HitDone := false
+    // ── Position Size Calculation ──
+    _slDist := riskDist
+    _pipsAtRisk := pipSize > 0 ? riskDist / pipSize : 0.0
+    _riskAmount := i_balance * i_riskPct / 100.0
+    _rawLot := _pipsAtRisk > 0 and pipValue > 0 ? _riskAmount / (_pipsAtRisk * pipValue) : 0.0
+    _posSize := math.max(i_minLot, math.min(i_maxLot, math.floor(_rawLot / i_lotStep + 0.000001) * i_lotStep))
+
+// ════════════════════════════════════════════════════════════════
+// ── STATUS DO SINAL (MANTER / SAIR)  ─ Sr.Robs ────────────────
+// ════════════════════════════════════════════════════════════════
+// activeSL = SL original (fixo); dynamicSL = SL atual (BE/Trail)
+// signalStatus: 0 = sem sinal, 1 = MANTER (ativo), 2 = SAIR (SL/BE/Trail), 3 = SAIR (TP final)
+// Declarado ANTES de tp1Hit para evitar erros de compilação (CE10272)
+var int signalStatus = 0
+var float activeSL = na
+var float activeTP3 = na
+var int activeDir = 0
+// Dynamic SL para BE e Trailing Stop — Sr.Robs
+var float dynamicSL = na
+var float tradeExtreme = na
+
+tp1Hit = signalStatus == 1 and not tp1HitDone and not na(tp1Price) and lastDir == 1 and high >= tp1Price
+tp2Hit = signalStatus == 1 and not tp2HitDone and not na(tp2Price) and lastDir == 1 and high >= tp2Price
+tp3Hit = signalStatus == 1 and not tp3HitDone and not na(tp3Price) and lastDir == 1 and high >= tp3Price
+tp1HitS = signalStatus == 1 and not tp1HitDone and not na(tp1Price) and lastDir == -1 and low <= tp1Price
+tp2HitS = signalStatus == 1 and not tp2HitDone and not na(tp2Price) and lastDir == -1 and low <= tp2Price
+tp3HitS = signalStatus == 1 and not tp3HitDone and not na(tp3Price) and lastDir == -1 and low <= tp3Price
+
+if tp1Hit or tp1HitS
+    tp1HitDone := true
+if tp2Hit or tp2HitS
+    tp2HitDone := true
+if tp3Hit or tp3HitS
+    tp3HitDone := true
+
+// ════════════════════════════════════════════════════════════════
+// ── P&L VALUES FOR DASHBOARD (uses var values set in signal blocks) ──
+// ════════════════════════════════════════════════════════════════
+// pipSize and pipValue are auto-detected above (before signal blocks)
+
+// ── Position size for dashboard (uses var _posSize set in signal blocks) ──
+positionSize = na(_posSize) ? 0.0 : _posSize
+
+// P&L is computed inline inside the dashboard block (after all var updates)
+
+// ════════════════════════════════════════════════════════════════
+// ── CONTADOR DE BARRAS + AVISO DE ENTRADA TARDIA ─ Sr.Robs ────
+// ════════════════════════════════════════════════════════════════
+// Barras desde o último sinal (para contagem decrescente no dashboard)
+barsSinceLong  = na(lastLongBarIdx) ? 999999 : (bar_index - lastLongBarIdx)
+barsSinceShort = na(lastShortBarIdx) ? 999999 : (bar_index - lastShortBarIdx)
+waitLong  = math.max(0, i_minBarsGap - barsSinceLong)
+waitShort = math.max(0, i_minBarsGap - barsSinceShort)
+closestWait = math.min(waitLong, waitShort)
+gapReady   = closestWait == 0
+// Quantas barras desde que o gap ficou pronto (para saber há quanto tempo o sinal está disponível)
+hasHadSignal = barsSinceLong < 999999 or barsSinceShort < 999999
+barsSinceReady = gapReady and hasHadSignal ? math.max(0, math.min(barsSinceLong, barsSinceShort) - i_minBarsGap) : -1
+
+// Condições base SEM o filtro de gap (para detetar entrada tardia)
+baseLongCond  = bullScore >= i_scoreMedium and (bullScore - bearScore) >= i_minScoreGap and htfBullOk and volatOk
+baseShortCond = bearScore >= i_scoreMedium and (bearScore - bullScore) >= i_minScoreGap and htfBearOk and volatOk
+
+// Indica se as condições base (sem gap) estão ativas — útil para o dashboard
+// Mostra "⚡Bull" ou "⚡Bear" quando trend+momentum+volume+estrutura estão alinhados
+string _baseDirTag = baseLongCond and baseShortCond ? " ⚡Bull|Bear" : baseLongCond ? " ⚡Bull" : baseShortCond ? " ⚡Bear" : ""
+
+// Streak de barras consecutivas com condições base ativas
+// nz() evita propagação de na na primeira barra do gráfico
+var int streakLong = 0
+var int streakShort = 0
+streakLong  := baseLongCond ? nz(streakLong[1]) + 1 : 0
+streakShort := baseShortCond ? nz(streakShort[1]) + 1 : 0
+
+// Aviso de entrada tardia (guardado quando o sinal dispara)
+var string lateWarningTxt = "—"
+var color lateWarningCol = c_neutral
+if longSignal
+    lateWarningTxt := streakLong >= i_lateBars ? "⚠️ Tardia (" + str.tostring(streakLong) + " b.)" : "✅ Fresca"
+    lateWarningCol := streakLong >= i_lateBars ? color.new(#ff9800, 0) : c_bull
+if shortSignal
+    lateWarningTxt := streakShort >= i_lateBars ? "⚠️ Tardia (" + str.tostring(streakShort) + " b.)" : "✅ Fresca"
+    lateWarningCol := streakShort >= i_lateBars ? color.new(#ff9800, 0) : c_bear
+
+// Atualiza signalStatus quando um sinal dispara
+if longSignal
+    signalStatus := 1
+    activeSL := slPrice
+    activeTP3 := tp3Price
+    activeDir := 1
+    dynamicSL := slPrice
+    tradeExtreme := high
+if shortSignal
+    signalStatus := 1
+    activeSL := slPrice
+    activeTP3 := tp3Price
+    activeDir := -1
+    dynamicSL := slPrice
+    tradeExtreme := low
+
+// Evita que SL/TP disparem na própria barra de entrada (wick da entrada)
+// barstate.isconfirmed garante que SL/TP só são avaliados no fecho da barra,
+// evitando que um wick intra-barra a SL ative "SAIR (SL)" numa barra que fecha no TP
+bool isEntryBar = longSignal or shortSignal
+
+// ════════════════════════════════════════════════════════════════
+// ── GESTÃO DE TRADE: BE + TRAILING STOP ── Sr.Robs ───────────
+// ════════════════════════════════════════════════════════════════
+if signalStatus == 1 and not isEntryBar
+    // Atualiza o extremo do trade (highest high / lowest low desde entrada)
+    tradeExtreme := activeDir == 1 ? math.max(tradeExtreme, high) : math.min(tradeExtreme, low)
+    
+    // 1. Breakeven: move SL para entry ou meio do TP1 quando TP1 é atingido
+    if i_beTp1 and tp1HitDone
+        float beTarget = i_beMode == "Half TP1" ? (entryPrice + tp1Price) / 2 : entryPrice
+        dynamicSL := activeDir == 1 ? math.max(dynamicSL, beTarget) : math.min(dynamicSL, beTarget)
+    
+    // 2. Trailing Stop: trail SL atrás do extremo
+    bool canTrail = i_useTrail and (i_trailAct == "Immediate" or (i_trailAct == "After TP1" and tp1HitDone) or (i_trailAct == "After TP2" and tp2HitDone))
+    if canTrail
+        float trailPrice = activeDir == 1 ? tradeExtreme - (atrVal * i_trailAtr) : tradeExtreme + (atrVal * i_trailAtr)
+        dynamicSL := activeDir == 1 ? math.max(dynamicSL, trailPrice) : math.min(dynamicSL, trailPrice)
+
+// SL exit agora usa dynamicSL em vez de activeSL
+slHitActive = signalStatus == 1 and not isEntryBar and barstate.isconfirmed and not na(dynamicSL) and (activeDir == 1 ? low <= dynamicSL : high >= dynamicSL)
+tpFinalHit  = signalStatus == 1 and not isEntryBar and barstate.isconfirmed and not na(activeTP3) and (activeDir == 1 ? high >= activeTP3 : low <= activeTP3)
+
+// Prioridade ao SL (pessimista): se ambos SL e TP3 forem atingidos na mesma barra, SL vence
+if slHitActive
+    signalStatus := 2
+    lateWarningTxt := "—"
+    lateWarningCol := c_neutral
+else if tpFinalHit
+    signalStatus := 3
+    lateWarningTxt := "—"
+    lateWarningCol := c_neutral
+
+f_statusTxt(int s) => 
+    if s == 1
+        tp2HitDone ? "Lucro 📈 (TP2)" : tp1HitDone ? (i_beMode == "Half TP1" ? "BE ½ 🔒 (TP1)" : "BE 🔒 (TP1)") : "MANTER"
+    else if s == 2
+        tp1HitDone ? "SAIR (BE)" : "SAIR (SL)"
+    else if s == 3
+        "SAIR (TP3)"
+    else
+        "AGUARDA"
+f_statusCol(int s) => 
+    s == 1 ? (tp1HitDone ? color.new(#29b6f6, 0) : c_hold) : s == 2 ? c_exit : s == 3 ? c_tp : c_wait
+
+statusTxt = f_statusTxt(signalStatus)
+statusCol = f_statusCol(signalStatus)
+
+// ════════════════════════════════════════════════════════════════
+// ── Dashboard helper functions ──
+f_barColor(float pct) =>
+    color result = pct >= 0.66 ? color.new(#26a69a, 0) : pct >= 0.33 ? color.new(#f9a825, 0) : color.new(#ef5350, 0)
+    result
+
+f_bar(float val, float maxVal) =>
+    float safeMax = maxVal == 0 ? 1.0 : maxVal
+    int filled = math.round(math.min(val / safeMax, 1.0) * 10)
+    string bar = ""
+    for i = 1 to 10
+        bar += i <= filled ? "█" : "░"
+    bar + "  " + str.tostring(math.round(val / safeMax * 100)) + "%"
+
+// ════════════════════════════════════════════════════════════════
+// ── DASHBOARD ── Sr.Robs ───────────────────────────────────────
+// ════════════════════════════════════════════════════════════════
+var table dash = na
+
+f_dashPos(string p) =>
+    string result = p == "Top Right" ? position.top_right : p == "Top Left" ? position.top_left : p == "Bottom Right" ? position.bottom_right : position.bottom_left
+    result
+
+if i_showDash
+    if na(dash)
+        dash := table.new(f_dashPos(i_dashPos), 2, 22, border_width=2, border_color=color.new(#4a5580, 0), frame_width=2, frame_color=color.new(#3a2a6d, 0))
+    row_a = C_DASH_BG
+    row_b = color.new(#151d30, 0)
+    lbl_col = color.new(C_DASH_TXT, 10)
+
+    // Linha 0 — Cabeçalho com marca Sr.Robs
+    table.cell(dash, 0, 0, "👑 Sr.Robs", text_color=C_DASH_TXT, text_size=size.small, bgcolor=C_DASH_HDR, text_halign=text.align_left)
+    table.cell(dash, 1, 0, syminfo.ticker + " · " + timeframe.period, text_color=C_DASH_TXT, text_size=size.small, bgcolor=C_DASH_HDR, text_halign=text.align_right)
+
+    // Linha 1 — Preset ativo + Lock
+    table.cell(dash, 0, 1, "  Preset TF", text_color=lbl_col, text_size=size.small, bgcolor=row_a, text_halign=text.align_left)
+    table.cell(dash, 1, 1, (usePreset ? "🟢 " : "⚪ ") + i_preset + "  ", text_color=usePreset ? c_tp : C_DASH_TXT, text_size=size.small, bgcolor=row_a, text_halign=text.align_right)
+
+    // Linha 2 — PRÓXIMO SINAL (contagem decrescente de barras)
+    table.cell(dash, 0, 2, i_nextTrade ? "  🔄 Reset Ativo" : "  ⏱️ Próx. Sinal", text_color=i_nextTrade ? color.new(#f9a825, 0) : lbl_col, text_size=size.small, bgcolor=row_b, text_halign=text.align_left)
+    string _gapTxt = closestWait == 0 ? (barsSinceReady <= 0 ? "✅ Pronto agora" : "✅ Pronto há " + str.tostring(barsSinceReady) + " b.") : closestWait <= 5 ? "Próx " + str.tostring(closestWait) : "Aguarda " + str.tostring(closestWait) + " b."
+    _gapTxt := _gapTxt + _baseDirTag
+    color   _gapCol = closestWait == 0 ? (barsSinceReady > 3 ? color.new(#f9a825, 0) : c_bull) : closestWait <= 5 ? color.new(#ff9800, 0) : color.new(C_DASH_TXT, 10)
+    table.cell(dash, 1, 2, _gapTxt + "  ", text_color=_gapCol, text_size=size.small, bgcolor=row_b, text_halign=text.align_right)
+
+    // Linha 3 — QUALIDADE DA ENTRADA (fresca vs tardia)
+    table.cell(dash, 0, 3, "  🎯 Qualidade", text_color=lbl_col, text_size=size.small, bgcolor=row_a, text_halign=text.align_left)
+    table.cell(dash, 1, 3, lateWarningTxt + "  ", text_color=lateWarningCol, text_size=size.small, bgcolor=row_a, text_halign=text.align_right)
+
+    // Linha 4 — STATUS DO SINAL (MANTER / SAIR)  ★ pedido do Sr.Robs ★
+    table.cell(dash, 0, 4, "  📌 Status Sinal", text_color=lbl_col, text_size=size.small, bgcolor=row_b, text_halign=text.align_left)
+    table.cell(dash, 1, 4, statusTxt + "  ", text_color=statusCol, text_size=size.normal, bgcolor=row_b, text_halign=text.align_right)
+
+    // Linha 5 — Direção ativa
+    table.cell(dash, 0, 5, "  Direção", text_color=lbl_col, text_size=size.small, bgcolor=row_a, text_halign=text.align_left)
+    table.cell(dash, 1, 5, (activeDir == 1 ? "LONG ▲" : activeDir == -1 ? "SHORT ▼" : "—") + "  ", text_color=activeDir == 1 ? c_bull : activeDir == -1 ? c_bear : C_DASH_TXT, text_size=size.small, bgcolor=row_a, text_halign=text.align_right)
+
+    // Linha 6 — Lock
+    table.cell(dash, 0, 6, "  Lock", text_color=lbl_col, text_size=size.small, bgcolor=row_b, text_halign=text.align_left)
+    table.cell(dash, 1, 6, i_lockSignal ? "ACTIVE  " : "OFF  ", text_color=i_lockSignal ? c_bear : C_DASH_TXT, text_size=size.small, bgcolor=row_b, text_halign=text.align_right)
+
+    // Linha 7 — Bull Score
+    table.cell(dash, 0, 7, "  Bull Score", text_color=lbl_col, text_size=size.small, bgcolor=row_a, text_halign=text.align_left)
+    table.cell(dash, 1, 7, f_bar(bullScore, 100), text_color=f_barColor(bullScore / 100), text_size=size.small, bgcolor=row_a, text_halign=text.align_right)
+
+    // Linha 8 — Bear Score
+    table.cell(dash, 0, 8, "  Bear Score", text_color=lbl_col, text_size=size.small, bgcolor=row_b, text_halign=text.align_left)
+    table.cell(dash, 1, 8, f_bar(bearScore, 100), text_color=f_barColor(bearScore / 100), text_size=size.small, bgcolor=row_b, text_halign=text.align_right)
+
+    // Linha 9 — Bull Tier
+    table.cell(dash, 0, 9, "  Bull Tier", text_color=lbl_col, text_size=size.small, bgcolor=row_a, text_halign=text.align_left)
+    table.cell(dash, 1, 9, bullTier + "  ", text_color=bullTier == "None" ? C_DASH_TXT : c_bull, text_size=size.small, bgcolor=row_a, text_halign=text.align_right)
+
+    // Linha 10 — Bear Tier
+    table.cell(dash, 0, 10, "  Bear Tier", text_color=lbl_col, text_size=size.small, bgcolor=row_b, text_halign=text.align_left)
+    table.cell(dash, 1, 10, bearTier + "  ", text_color=bearTier == "None" ? C_DASH_TXT : c_bear, text_size=size.small, bgcolor=row_b, text_halign=text.align_right)
+
+    // Linha 11 — Trend Leg
+    table.cell(dash, 0, 11, "  Trend Leg", text_color=lbl_col, text_size=size.small, bgcolor=row_a, text_halign=text.align_left)
+    table.cell(dash, 1, 11, f_bar(math.max(trendUpScore, trendDnScore), 100), text_color=f_barColor(math.max(trendUpScore, trendDnScore) / 100), text_size=size.small, bgcolor=row_a, text_halign=text.align_right)
+
+    // Linha 12 — Momentum Leg
+    table.cell(dash, 0, 12, "  Momentum Leg", text_color=lbl_col, text_size=size.small, bgcolor=row_b, text_halign=text.align_left)
+    table.cell(dash, 1, 12, f_bar(math.max(momUpScore, momDnScore), 100), text_color=f_barColor(math.max(momUpScore, momDnScore) / 100), text_size=size.small, bgcolor=row_b, text_halign=text.align_right)
+
+    // Linha 13 — Volume Leg
+    table.cell(dash, 0, 13, "  Volume Leg", text_color=lbl_col, text_size=size.small, bgcolor=row_a, text_halign=text.align_left)
+    table.cell(dash, 1, 13, f_bar(math.max(volUpScore, volDnScore), 100), text_color=f_barColor(math.max(volUpScore, volDnScore) / 100), text_size=size.small, bgcolor=row_a, text_halign=text.align_right)
+
+    // Linha 14 — Structure Leg
+    table.cell(dash, 0, 14, "  Structure Leg", text_color=lbl_col, text_size=size.small, bgcolor=row_b, text_halign=text.align_left)
+    table.cell(dash, 1, 14, f_bar(math.max(structUpScore, structDnScore), 100), text_color=f_barColor(math.max(structUpScore, structDnScore) / 100), text_size=size.small, bgcolor=row_b, text_halign=text.align_right)
+
+    // Linha 15 — Volume Ratio + ATR %
+    table.cell(dash, 0, 15, "  Vol Ratio / ATR%", text_color=lbl_col, text_size=size.small, bgcolor=row_a, text_halign=text.align_left)
+    table.cell(dash, 1, 15, str.tostring(volRatio, "#.##") + "x · " + str.tostring(atrPct, "#.##") + "%  ", text_color=isVolSpike ? c_bull : C_DASH_TXT, text_size=size.small, bgcolor=row_a, text_halign=text.align_right)
+
+    // Linha 16 — 📋 Trade Levels (copy-paste para a broker)
+    string _tradeLevels = na(entryPrice) or signalStatus > 1 ? "Sem sinal ativo  " : "E:" + str.tostring(entryPrice, format.mintick) + " | SL:" + str.tostring(dynamicSL, format.mintick) + " | TP1:" + str.tostring(tp1Price, format.mintick) + " | TP2:" + str.tostring(tp2Price, format.mintick) + " | TP3:" + str.tostring(tp3Price, format.mintick)
+    color _tlCol = na(entryPrice) or signalStatus > 1 ? lbl_col : activeDir == 1 ? c_bull : activeDir == -1 ? c_bear : c_tp
+    table.cell(dash, 0, 16, "  📋 Alvos", text_color=lbl_col, text_size=size.small, bgcolor=row_b, text_halign=text.align_left)
+    table.cell(dash, 1, 16, _tradeLevels, text_color=_tlCol, text_size=size.normal, bgcolor=row_b, text_halign=text.align_right)
+
+    // Linha 17 — 💰 Pip Info (Auto-Detect)
+    string _pipTag = syminfo.basecurrency + "/" + syminfo.currency
+    string _pipTxt = "Pip: " + str.tostring(pipSize, "0." + (pipSize < 0.001 ? "00000" : pipSize < 0.1 ? "000" : "00")) + " | $/Lot: " + str.tostring(pipValue, "0.00") + " (" + _pipTag + ")"
+    table.cell(dash, 0, 17, "  💱 Auto-Detect", text_color=lbl_col, text_size=size.small, bgcolor=row_a, text_halign=text.align_left)
+    table.cell(dash, 1, 17, _pipTxt + "  ", text_color=C_DASH_TXT, text_size=size.small, bgcolor=row_a, text_halign=text.align_right)
+
+    // Linha 18 — 💵 Balance + Risk %
+    string _balTxt = "$" + str.tostring(i_balance, "0") + " | Risco " + str.tostring(i_riskPct, "0.0") + "%"
+    table.cell(dash, 0, 18, "  💵 Banca / Risco", text_color=lbl_col, text_size=size.small, bgcolor=row_b, text_halign=text.align_left)
+    table.cell(dash, 1, 18, _balTxt + "  ", text_color=C_DASH_TXT, text_size=size.small, bgcolor=row_b, text_halign=text.align_right)
+
+    // Linha 19 — 📐 Position Size + P&L (computed inline — all vars finalized)
+    bool _showPnlVals = i_showRisk and not na(entryPrice) and signalStatus <= 1
+    string _riskLabel = _showPnlVals ? "  📐 Lote: " + str.tostring(positionSize, "0.00") : "  📐 Lote"
+    string _pnlTxt = "Aguarda sinal...  "
+    color _pnlCol = lbl_col
+    if _showPnlVals and not na(dynamicSL)
+        float _rDist = math.abs(entryPrice - dynamicSL)
+        float _rPnL  = -_rDist / pipSize * pipValue * positionSize
+        float _t1PnL = na(tp1Price) ? 0.0 : math.abs(tp1Price - entryPrice) / pipSize * pipValue * positionSize
+        float _t2PnL = na(tp2Price) ? 0.0 : math.abs(tp2Price - entryPrice) / pipSize * pipValue * positionSize
+        float _t3PnL = na(tp3Price) ? 0.0 : math.abs(tp3Price - entryPrice) / pipSize * pipValue * positionSize
+        _pnlTxt := "🔴 -$" + str.tostring(math.abs(_rPnL), "0.00") + " | 🟢 +$" + str.tostring(_t1PnL, "0.00") + " | +$" + str.tostring(_t2PnL, "0.00") + " | +$" + str.tostring(_t3PnL, "0.00")
+        _pnlCol := activeDir == 1 ? c_bull : activeDir == -1 ? c_bear : c_tp
+    table.cell(dash, 0, 19, _riskLabel, text_color=lbl_col, text_size=size.small, bgcolor=row_a, text_halign=text.align_left)
+    table.cell(dash, 1, 19, _pnlTxt + "  ", text_color=_pnlCol, text_size=size.normal, bgcolor=row_a, text_halign=text.align_right)
+
+    // ⬇️ Spacer rows (invisíveis) — empurram o conteúdo para cima, longe do logo TradingView
+    table.cell(dash, 0, 20, "", text_color=na, text_size=size.small, bgcolor=C_DASH_BG, text_halign=text.align_left)
+    table.cell(dash, 1, 20, "", text_color=na, text_size=size.small, bgcolor=C_DASH_BG, text_halign=text.align_right)
+    table.cell(dash, 0, 21, "", text_color=na, text_size=size.small, bgcolor=C_DASH_BG, text_halign=text.align_left)
+    table.cell(dash, 1, 21, "", text_color=na, text_size=size.small, bgcolor=C_DASH_BG, text_halign=text.align_right)
+
